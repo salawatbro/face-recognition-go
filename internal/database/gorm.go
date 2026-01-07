@@ -9,16 +9,11 @@ import (
 
 	"face/internal/database/models"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/database/sqlite"
 )
 
 //go:embed migrations/*.sql
@@ -44,10 +39,6 @@ func NewSQLiteDatabase(filePath string) (*GormDatabase, error) {
 
 	gdb := &GormDatabase{db: db, dbType: DatabaseTypeSQLite}
 
-	if err := gdb.runMigrations(filePath); err != nil {
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
-	}
-
 	// Ensure default settings exist
 	if err := gdb.ensureDefaultSettings(); err != nil {
 		return nil, fmt.Errorf("failed to create default settings: %w", err)
@@ -67,52 +58,12 @@ func NewPostgresDatabase(dsn string) (*GormDatabase, error) {
 
 	gdb := &GormDatabase{db: db, dbType: DatabaseTypePostgres}
 
-	if err := gdb.runMigrations(dsn); err != nil {
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
-	}
-
 	// Ensure default settings exist
 	if err := gdb.ensureDefaultSettings(); err != nil {
 		return nil, fmt.Errorf("failed to create default settings: %w", err)
 	}
 
 	return gdb, nil
-}
-
-// runMigrations runs database migrations
-func (g *GormDatabase) runMigrations(connectionString string) error {
-	d, err := iofs.New(migrationsFS, "migrations")
-	if err != nil {
-		return fmt.Errorf("failed to create migration source: %w", err)
-	}
-
-	var dbURL string
-	if g.dbType == DatabaseTypeSQLite {
-		dbURL = fmt.Sprintf("sqlite://%s", connectionString)
-	} else {
-		dbURL = connectionString
-		if !strings.HasPrefix(dbURL, "postgres://") {
-			dbURL = "postgres://" + dbURL
-		}
-	}
-
-	m, err := migrate.NewWithSourceInstance("iofs", d, dbURL)
-	if err != nil {
-		// If migrations fail, fall back to auto-migrate
-		return g.autoMigrate()
-	}
-
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		// Fall back to auto-migrate if migrations fail
-		return g.autoMigrate()
-	}
-
-	return nil
-}
-
-// autoMigrate uses GORM's auto-migration as fallback
-func (g *GormDatabase) autoMigrate() error {
-	return g.db.AutoMigrate(&models.User{}, &models.Face{}, &models.Settings{})
 }
 
 // ensureDefaultSettings creates default settings if not exists

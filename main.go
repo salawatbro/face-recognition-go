@@ -50,6 +50,7 @@ func init() {
 	rootCmd.AddCommand(cmd.NewListCmd(cfg))
 	rootCmd.AddCommand(cmd.NewDeleteCmd(cfg))
 	rootCmd.AddCommand(cmd.NewUpdateCmd(cfg))
+	rootCmd.AddCommand(cmd.NewMigrateCmd(cfg))
 }
 
 func main() {

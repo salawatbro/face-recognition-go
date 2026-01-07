@@ -202,6 +202,41 @@ b2c3d4e5-f6a7-8901-bcde-f12345678901  Jane Smith    jane@example.com   2      20
 ./face delete --id "a1b2c3d4" --confirm
 ```
 
+### `migrate` - Database Migrations
+
+Manage database schema migrations manually:
+
+```bash
+# Apply all pending migrations
+./face migrate up
+
+# Apply specific number of migrations
+./face migrate up --steps 1
+
+# Rollback one migration (default)
+./face migrate down
+
+# Rollback specific number of migrations
+./face migrate down --steps 2
+
+# Rollback all migrations
+./face migrate down --all
+
+# Check current migration version
+./face migrate status
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `up` | Apply pending migrations |
+| `down` | Rollback migrations |
+| `status` | Show current migration version |
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--steps`, `-n` | 0 (all) for up, 1 for down | Number of migrations to run |
+| `--all` | false | Rollback all migrations (down only) |
+
 ## Global Flags
 
 | Flag | Environment Variable | Default | Description |
@@ -235,7 +270,7 @@ export FACE_CLI_THRESHOLD=0.75
 ┌─────────────────────────────────────────────────────────────────┐
 │                         CLI (Cobra)                             │
 ├─────────────────────────────────────────────────────────────────┤
-│  enroll  │  identify  │  verify  │  list  │  update  │  delete  │
+│  enroll  │  identify  │  verify  │  list  │  update  │  delete  │  migrate │
 ├──────────┴────────────┴──────────┴────────┴──────────┴──────────┤
 │                                                                 │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
@@ -303,13 +338,15 @@ face/
 │   ├── list.go
 │   ├── update.go
 │   ├── delete.go
+│   ├── migrate.go
 │   └── helpers.go
 ├── internal/
 │   ├── database/           # Database layer
 │   │   ├── database.go     # Database interface
-│   │   ├── models.go       # User, Face, Settings models
+│   │   ├── models/         # User, Face, Settings models
 │   │   ├── gorm.go         # GORM implementation (SQLite/PostgreSQL)
 │   │   ├── json.go         # JSON file implementation
+│   │   ├── migration.go    # Migration helper
 │   │   └── migrations/     # SQL migrations
 │   │       ├── 000001_init_schema.up.sql
 │   │       └── 000001_init_schema.down.sql
