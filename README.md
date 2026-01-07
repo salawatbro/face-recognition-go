@@ -16,7 +16,7 @@ A lightweight, pure Go command-line tool for face detection, recognition, and ve
 | **1:N Identification** | Find a person among all enrolled users |
 | **1:1 Verification** | Verify if a photo matches a specific user |
 | **Multi-Face Enrollment** | Multiple photos per user for better accuracy |
-| **Local Storage** | JSON database + filesystem, no cloud needed |
+| **Multiple Databases** | SQLite, PostgreSQL, or JSON file storage |
 | **Privacy First** | All processing happens locally |
 
 ## Quick Start
@@ -49,6 +49,43 @@ go build -o face
 ### Pre-built Binaries
 
 Download from [Releases](https://github.com/salawatbro/face-recognition-go/releases) page.
+
+## Database Backends
+
+The CLI supports multiple database backends:
+
+| Backend | Use Case | Flag |
+|---------|----------|------|
+| **SQLite** (default) | Local deployment, single file | `--db-type sqlite` |
+| **PostgreSQL** | Production, multi-user, scaling | `--db-type postgres` |
+| **JSON** | Legacy, simple testing | `--db-type json` |
+
+### SQLite (Default)
+
+```bash
+# Uses face.db by default
+./face enroll --name "John" --images "photo.jpg"
+
+# Custom database file
+./face enroll --name "John" --images "photo.jpg" --db mydata.db
+```
+
+### PostgreSQL
+
+```bash
+# Using connection string
+./face list --db-type postgres --db "host=localhost user=postgres password=secret dbname=face sslmode=disable"
+
+# Using environment variable
+export FACE_CLI_POSTGRES_URL="postgres://user:pass@localhost/face?sslmode=disable"
+./face list
+```
+
+### JSON (Legacy)
+
+```bash
+./face list --db-type json --db data.json
+```
 
 ## Commands
 
@@ -89,7 +126,7 @@ Search all enrolled users to identify someone:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--image`, `-i` | - | Image to identify (required) |
-| `--threshold`, `-t` | 0.4 | Minimum similarity score |
+| `--threshold`, `-t` | 0.75 | Minimum similarity score |
 
 **Output:**
 ```
@@ -169,9 +206,26 @@ b2c3d4e5-f6a7-8901-bcde-f12345678901  Jane Smith    jane@example.com   2      20
 
 | Flag | Environment Variable | Default | Description |
 |------|---------------------|---------|-------------|
-| `--db` | `FACE_CLI_DB_PATH` | `db.json` | Database file path |
+| `--db-type` | `FACE_CLI_DB_TYPE` | `sqlite` | Database type (sqlite, postgres, json) |
+| `--db` | `FACE_CLI_DB_PATH` | `face.db` | Database path or connection string |
 | `--faces-dir` | `FACE_CLI_FACES_DIR` | `faces/` | Face images directory |
+| `--threshold` | `FACE_CLI_THRESHOLD` | `0.75` | Default matching threshold |
 | `--verbose`, `-v` | - | false | Enable verbose output |
+
+### Environment Variables
+
+```bash
+# Database configuration
+export FACE_CLI_DB_TYPE=sqlite
+export FACE_CLI_DB_PATH=face.db
+
+# PostgreSQL (overrides DB_TYPE and DB_PATH)
+export FACE_CLI_POSTGRES_URL="postgres://user:pass@localhost/face"
+
+# Other settings
+export FACE_CLI_FACES_DIR=faces
+export FACE_CLI_THRESHOLD=0.75
+```
 
 ## How It Works
 
@@ -190,10 +244,17 @@ b2c3d4e5-f6a7-8901-bcde-f12345678901  Jane Smith    jane@example.com   2      20
 │  └─────────────┘  └─────────────┘  └─────────────┘             │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────┐  ┌─────────────────────┐              │
-│  │   JSON Database     │  │   Filesystem        │              │
-│  │   (db.json)         │  │   (faces/)          │              │
-│  └─────────────────────┘  └─────────────────────┘              │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              Database Interface (GORM)                   │   │
+│  ├─────────────────┬─────────────────┬─────────────────────┤   │
+│  │     SQLite      │   PostgreSQL    │        JSON         │   │
+│  │   (default)     │   (production)  │      (legacy)       │   │
+│  └─────────────────┴─────────────────┴─────────────────────┘   │
+│                                                                 │
+│  ┌─────────────────────┐                                       │
+│  │   Filesystem        │                                       │
+│  │   (faces/)          │                                       │
+│  └─────────────────────┘                                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -228,7 +289,7 @@ Uses cosine similarity:
 similarity = (A · B) / (||A|| × ||B||)
 ```
 
-Match threshold: 0.4 (default), adjustable per command.
+Match threshold: 0.75 (default), adjustable per command.
 
 ## Project Structure
 
@@ -241,23 +302,29 @@ face/
 │   ├── verify.go
 │   ├── list.go
 │   ├── update.go
-│   └── delete.go
+│   ├── delete.go
+│   └── helpers.go
 ├── internal/
-│   ├── database/          # JSON database layer
-│   │   ├── models.go      # User, Face structs
-│   │   └── json.go        # CRUD operations
-│   ├── face/              # Face processing
-│   │   ├── detector.go    # Pigo face detection
-│   │   ├── embeddings.go  # Feature extraction
-│   │   ├── extractor.go   # Interface
-│   │   └── matcher.go     # Similarity matching
-│   └── storage/           # File storage
+│   ├── database/           # Database layer
+│   │   ├── database.go     # Database interface
+│   │   ├── models.go       # User, Face, Settings models
+│   │   ├── gorm.go         # GORM implementation (SQLite/PostgreSQL)
+│   │   ├── json.go         # JSON file implementation
+│   │   └── migrations/     # SQL migrations
+│   │       ├── 000001_init_schema.up.sql
+│   │       └── 000001_init_schema.down.sql
+│   ├── face/               # Face processing
+│   │   ├── detector.go     # Pigo face detection
+│   │   ├── embeddings.go   # Feature extraction
+│   │   ├── extractor.go    # Interface
+│   │   └── matcher.go      # Similarity matching
+│   └── storage/            # File storage
 │       └── filesystem.go
 ├── config/
-│   └── config.go          # Configuration
-├── db.json                # Database (auto-created)
-├── faces/                 # Images (auto-created)
-└── models/                # Cascade file (auto-downloaded)
+│   └── config.go           # Configuration
+├── face.db                 # SQLite database (auto-created)
+├── faces/                  # Images (auto-created)
+└── models/                 # Cascade file (auto-downloaded)
 ```
 
 ## Performance
@@ -268,7 +335,7 @@ face/
 | Extraction Speed | 20-30ms per face |
 | Matching Speed | <1ms per comparison |
 | Memory Usage | ~50MB |
-| Database Limit | ~10,000 users |
+| Database Limit | ~100,000 users (SQLite), unlimited (PostgreSQL) |
 
 ## Accuracy
 
@@ -289,7 +356,7 @@ face/
 ## Use Cases
 
 **Good for:**
-- Small-scale access control (<100 users)
+- Small to medium-scale access control
 - Prototyping and development
 - Educational purposes
 - Privacy-sensitive applications
@@ -297,7 +364,6 @@ face/
 
 **Not recommended for:**
 - High-security authentication
-- Large-scale deployments (>10,000 users)
 - Real-time video processing
 - Applications requiring 99%+ accuracy
 
@@ -311,6 +377,10 @@ All pure Go, no CGO required:
 | `github.com/spf13/cobra` | CLI framework |
 | `github.com/google/uuid` | UUID generation |
 | `golang.org/x/image` | Image processing |
+| `gorm.io/gorm` | ORM for database |
+| `gorm.io/driver/sqlite` | SQLite driver |
+| `gorm.io/driver/postgres` | PostgreSQL driver |
+| `github.com/golang-migrate/migrate` | Database migrations |
 
 ## Development
 
@@ -346,3 +416,4 @@ Apache License 2.0 - See [LICENSE](LICENSE) file for details.
 
 - [Pigo](https://github.com/esimov/pigo) - Pure Go face detection library
 - [Cobra](https://github.com/spf13/cobra) - CLI framework
+- [GORM](https://gorm.io) - ORM library for Go
