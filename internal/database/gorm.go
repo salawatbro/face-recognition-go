@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"face/internal/database/models"
+
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
@@ -110,21 +112,21 @@ func (g *GormDatabase) runMigrations(connectionString string) error {
 
 // autoMigrate uses GORM's auto-migration as fallback
 func (g *GormDatabase) autoMigrate() error {
-	return g.db.AutoMigrate(&User{}, &Face{}, &Settings{})
+	return g.db.AutoMigrate(&models.User{}, &models.Face{}, &models.Settings{})
 }
 
 // ensureDefaultSettings creates default settings if not exists
 func (g *GormDatabase) ensureDefaultSettings() error {
 	var count int64
-	g.db.Model(&Settings{}).Count(&count)
+	g.db.Model(&models.Settings{}).Count(&count)
 	if count == 0 {
-		return g.db.Create(DefaultSettings()).Error
+		return g.db.Create(models.DefaultSettings()).Error
 	}
 	return nil
 }
 
 // CreateUser adds a new user to the database
-func (g *GormDatabase) CreateUser(user *User) error {
+func (g *GormDatabase) CreateUser(user *models.User) error {
 	if user.ID == "" {
 		user.ID = uuid.New().String()
 	}
@@ -138,17 +140,17 @@ func (g *GormDatabase) CreateUser(user *User) error {
 	user.UpdatedAt = now
 
 	if user.Faces == nil {
-		user.Faces = []Face{}
+		user.Faces = []models.Face{}
 	}
 	if user.Metadata == nil {
-		user.Metadata = make(Metadata)
+		user.Metadata = make(models.Metadata)
 	}
 
 	result := g.db.Create(user)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "UNIQUE") ||
 			strings.Contains(result.Error.Error(), "duplicate") {
-			return ErrUserAlreadyExists
+			return models.ErrUserAlreadyExists
 		}
 		return fmt.Errorf("failed to create user: %w", result.Error)
 	}
@@ -157,12 +159,12 @@ func (g *GormDatabase) CreateUser(user *User) error {
 }
 
 // GetUser retrieves a user by ID
-func (g *GormDatabase) GetUser(id string) (*User, error) {
-	var user User
+func (g *GormDatabase) GetUser(id string) (*models.User, error) {
+	var user models.User
 	result := g.db.Preload("Faces").First(&user, "id = ?", id)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
+			return nil, models.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to get user: %w", result.Error)
 	}
@@ -170,12 +172,12 @@ func (g *GormDatabase) GetUser(id string) (*User, error) {
 }
 
 // GetUserByName retrieves a user by name
-func (g *GormDatabase) GetUserByName(name string) (*User, error) {
-	var user User
+func (g *GormDatabase) GetUserByName(name string) (*models.User, error) {
+	var user models.User
 	result := g.db.Preload("Faces").First(&user, "name = ?", name)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
+			return nil, models.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to get user by name: %w", result.Error)
 	}
@@ -183,7 +185,7 @@ func (g *GormDatabase) GetUserByName(name string) (*User, error) {
 }
 
 // UpdateUser updates an existing user
-func (g *GormDatabase) UpdateUser(user *User) error {
+func (g *GormDatabase) UpdateUser(user *models.User) error {
 	if err := user.Validate(); err != nil {
 		return err
 	}
@@ -203,7 +205,7 @@ func (g *GormDatabase) UpdateUser(user *User) error {
 	}
 
 	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+		return models.ErrUserNotFound
 	}
 
 	return nil
@@ -211,40 +213,40 @@ func (g *GormDatabase) UpdateUser(user *User) error {
 
 // DeleteUser removes a user from the database
 func (g *GormDatabase) DeleteUser(id string) error {
-	result := g.db.Delete(&User{}, "id = ?", id)
+	result := g.db.Delete(&models.User{}, "id = ?", id)
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete user: %w", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+		return models.ErrUserNotFound
 	}
 
 	return nil
 }
 
 // ListUsers returns all users in the database
-func (g *GormDatabase) ListUsers() ([]User, error) {
-	var users []User
+func (g *GormDatabase) ListUsers() ([]models.User, error) {
+	var users []models.User
 	result := g.db.Preload("Faces").Order("created_at DESC").Find(&users)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to list users: %w", result.Error)
 	}
 
 	if users == nil {
-		users = []User{}
+		users = []models.User{}
 	}
 
 	return users, nil
 }
 
 // AddFace adds a face to a user
-func (g *GormDatabase) AddFace(userID string, face *Face) error {
+func (g *GormDatabase) AddFace(userID string, face *models.Face) error {
 	// Check if user exists
-	var user User
+	var user models.User
 	if err := g.db.First(&user, "id = ?", userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrUserNotFound
+			return models.ErrUserNotFound
 		}
 		return fmt.Errorf("failed to find user: %w", err)
 	}
@@ -256,9 +258,9 @@ func (g *GormDatabase) AddFace(userID string, face *Face) error {
 	}
 
 	var faceCount int64
-	g.db.Model(&Face{}).Where("user_id = ?", userID).Count(&faceCount)
+	g.db.Model(&models.Face{}).Where("user_id = ?", userID).Count(&faceCount)
 	if int(faceCount) >= settings.MaxFacesPerUser {
-		return ErrMaxFacesReached
+		return models.ErrMaxFacesReached
 	}
 
 	if face.ID == "" {
@@ -277,14 +279,14 @@ func (g *GormDatabase) AddFace(userID string, face *Face) error {
 	}
 
 	// Update user's updated_at
-	g.db.Model(&User{}).Where("id = ?", userID).Update("updated_at", time.Now())
+	g.db.Model(&models.User{}).Where("id = ?", userID).Update("updated_at", time.Now())
 
 	return nil
 }
 
 // RemoveFace removes a face from a user
 func (g *GormDatabase) RemoveFace(userID, faceID string) error {
-	result := g.db.Where("id = ? AND user_id = ?", faceID, userID).Delete(&Face{})
+	result := g.db.Where("id = ? AND user_id = ?", faceID, userID).Delete(&models.Face{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to remove face: %w", result.Error)
 	}
@@ -294,20 +296,20 @@ func (g *GormDatabase) RemoveFace(userID, faceID string) error {
 	}
 
 	// Update user's updated_at
-	g.db.Model(&User{}).Where("id = ?", userID).Update("updated_at", time.Now())
+	g.db.Model(&models.User{}).Where("id = ?", userID).Update("updated_at", time.Now())
 
 	return nil
 }
 
 // GetAllEmbeddings returns a map of userID to faces for matching
-func (g *GormDatabase) GetAllEmbeddings() (map[string][]Face, error) {
-	var faces []Face
+func (g *GormDatabase) GetAllEmbeddings() (map[string][]models.Face, error) {
+	var faces []models.Face
 	result := g.db.Find(&faces)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to get embeddings: %w", result.Error)
 	}
 
-	embeddings := make(map[string][]Face)
+	embeddings := make(map[string][]models.Face)
 	for _, face := range faces {
 		embeddings[face.UserID] = append(embeddings[face.UserID], face)
 	}
@@ -316,13 +318,13 @@ func (g *GormDatabase) GetAllEmbeddings() (map[string][]Face, error) {
 }
 
 // GetSettings returns the current settings
-func (g *GormDatabase) GetSettings() (*Settings, error) {
-	var settings Settings
+func (g *GormDatabase) GetSettings() (*models.Settings, error) {
+	var settings models.Settings
 	result := g.db.First(&settings, "id = ?", 1)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			// Create default settings
-			settings = *DefaultSettings()
+			settings = *models.DefaultSettings()
 			if err := g.db.Create(&settings).Error; err != nil {
 				return nil, fmt.Errorf("failed to create default settings: %w", err)
 			}
@@ -334,7 +336,7 @@ func (g *GormDatabase) GetSettings() (*Settings, error) {
 }
 
 // UpdateSettings updates the database settings
-func (g *GormDatabase) UpdateSettings(settings *Settings) error {
+func (g *GormDatabase) UpdateSettings(settings *models.Settings) error {
 	settings.ID = 1
 	result := g.db.Save(settings)
 	if result.Error != nil {

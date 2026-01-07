@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"face/config"
-	"face/internal/database"
+	"face/internal/database/models"
 	"face/internal/face"
 
 	"github.com/spf13/cobra"
@@ -95,7 +95,7 @@ func runIdentify(cfg *config.Config, imagePath string, threshold float64) error 
 
 	match, err := matcher.Match(result.Embedding, threshold)
 	if err != nil {
-		if errors.Is(err, database.ErrNoMatch) {
+		if errors.Is(err, models.ErrNoMatch) {
 			fmt.Println("✗ No match found")
 			fmt.Printf("  No user matched with confidence >= %.0f%%\n", threshold*100)
 			return nil
@@ -107,7 +107,7 @@ func runIdentify(cfg *config.Config, imagePath string, threshold float64) error 
 	return nil
 }
 
-func printMatchResult(match *database.MatchResult) {
+func printMatchResult(match *models.MatchResult) {
 	fmt.Println("\n✓ Match found!")
 	fmt.Println("─────────────────────────────────────")
 	fmt.Printf("User ID:     %s\n", match.User.ID)

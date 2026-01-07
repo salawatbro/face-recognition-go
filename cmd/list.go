@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"face/config"
-	"face/internal/database"
 
 	"github.com/spf13/cobra"
 )
@@ -32,10 +31,11 @@ func NewListCmd(cfg *config.Config) *cobra.Command {
 }
 
 func runList(cfg *config.Config, formatJSON bool) error {
-	db, err := database.NewJSONDatabase(cfg.DatabasePath)
+	db, err := cfg.GetDatabaseConnection()
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
+	defer db.Close()
 
 	users, err := db.ListUsers()
 	if err != nil {

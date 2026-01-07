@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"face/config"
-	"face/internal/database"
+	"face/internal/database/models"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -58,7 +58,7 @@ func runEnroll(cfg *config.Config, name, email, phone, imagesStr, metadataStr st
 		imagePaths[i] = strings.TrimSpace(imagePaths[i])
 	}
 
-	var metadataMap database.Metadata
+	var metadataMap models.Metadata
 	if metadataStr != "" {
 		if err := json.Unmarshal([]byte(metadataStr), &metadataMap); err != nil {
 			return fmt.Errorf("invalid metadata JSON: %w", err)
@@ -66,13 +66,13 @@ func runEnroll(cfg *config.Config, name, email, phone, imagesStr, metadataStr st
 	}
 
 	userID := uuid.New().String()
-	user := &database.User{
+	user := &models.User{
 		ID:       userID,
 		Name:     name,
 		Email:    email,
 		Phone:    phone,
 		Metadata: metadataMap,
-		Faces:    []database.Face{},
+		Faces:    []models.Face{},
 	}
 
 	fmt.Printf("\nEnrolling user: %s\n", name)
@@ -101,10 +101,10 @@ func runEnroll(cfg *config.Config, name, email, phone, imagesStr, metadataStr st
 			continue
 		}
 
-		user.Faces = append(user.Faces, database.Face{
+		user.Faces = append(user.Faces, models.Face{
 			ID:           faceID,
 			Filename:     filename,
-			Embedding:    database.Embedding(result.Embedding),
+			Embedding:    models.Embedding(result.Embedding),
 			QualityScore: result.QualityScore,
 		})
 		fmt.Printf("  ✓ Face enrolled successfully\n")

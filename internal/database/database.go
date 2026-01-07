@@ -1,25 +1,29 @@
 package database
 
-import "fmt"
+import (
+	"fmt"
+
+	"face/internal/database/models"
+)
 
 // Database defines the interface for all database implementations
 type Database interface {
 	// User operations
-	CreateUser(user *User) error
-	GetUser(id string) (*User, error)
-	GetUserByName(name string) (*User, error)
-	UpdateUser(user *User) error
+	CreateUser(user *models.User) error
+	GetUser(id string) (*models.User, error)
+	GetUserByName(name string) (*models.User, error)
+	UpdateUser(user *models.User) error
 	DeleteUser(id string) error
-	ListUsers() ([]User, error)
+	ListUsers() ([]models.User, error)
 
 	// Face operations
-	AddFace(userID string, face *Face) error
+	AddFace(userID string, face *models.Face) error
 	RemoveFace(userID, faceID string) error
-	GetAllEmbeddings() (map[string][]Face, error)
+	GetAllEmbeddings() (map[string][]models.Face, error)
 
 	// Settings operations
-	GetSettings() (*Settings, error)
-	UpdateSettings(settings *Settings) error
+	GetSettings() (*models.Settings, error)
+	UpdateSettings(settings *models.Settings) error
 
 	// Connection management
 	Close() error

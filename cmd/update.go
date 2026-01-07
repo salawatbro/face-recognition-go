@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"face/config"
-	"face/internal/database"
+	"face/internal/database/models"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -104,7 +104,7 @@ func runUpdate(cfg *config.Config, userID, name, email, phone, addFace, removeFa
 	return nil
 }
 
-func removeFaceFromUser(fs *FaceSystem, userID, faceID string, user *database.User) error {
+func removeFaceFromUser(fs *FaceSystem, userID, faceID string, user *models.User) error {
 	var faceFilename string
 	found := false
 	for _, face := range user.Faces {
@@ -152,10 +152,10 @@ func addFaceToUser(fs *FaceSystem, userID, imagePath string) error {
 		return fmt.Errorf("failed to save image: %w", err)
 	}
 
-	faceData := &database.Face{
+	faceData := &models.Face{
 		ID:           faceID,
 		Filename:     filename,
-		Embedding:    database.Embedding(result.Embedding),
+		Embedding:    models.Embedding(result.Embedding),
 		QualityScore: result.QualityScore,
 	}
 

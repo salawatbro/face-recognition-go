@@ -29,5 +29,5 @@ coverage.html
 *.tmp
 *.log
 
-# Models (auto-downloaded on first run)
-models/
+# Pigo cascade models (auto-downloaded on first run)
+/models/

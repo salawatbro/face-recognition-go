@@ -7,22 +7,24 @@ import (
 	"sync"
 	"time"
 
+	"face/internal/database/models"
+
 	"github.com/google/uuid"
 )
 
 // jsonData represents the internal JSON file structure
 type jsonData struct {
-	Version  string   `json:"version"`
-	Users    []User   `json:"users"`
-	Settings Settings `json:"settings"`
+	Version  string           `json:"version"`
+	Users    []models.User    `json:"users"`
+	Settings models.Settings  `json:"settings"`
 }
 
 // newJSONData creates a new JSON data structure with defaults
 func newJSONData() *jsonData {
 	return &jsonData{
 		Version: "1.0",
-		Users:   []User{},
-		Settings: Settings{
+		Users:   []models.User{},
+		Settings: models.Settings{
 			ID:                 1,
 			MatchThreshold:     0.6,
 			MaxFacesPerUser:    10,
@@ -70,7 +72,7 @@ func (j *JSONDatabase) Load() error {
 
 	jd := newJSONData()
 	if err := json.Unmarshal(data, jd); err != nil {
-		return ErrDatabaseCorrupt
+		return models.ErrDatabaseCorrupt
 	}
 
 	j.data = jd
@@ -86,7 +88,7 @@ func (j *JSONDatabase) Save() error {
 }
 
 // CreateUser adds a new user to the database
-func (j *JSONDatabase) CreateUser(user *User) error {
+func (j *JSONDatabase) CreateUser(user *models.User) error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 
@@ -96,7 +98,7 @@ func (j *JSONDatabase) CreateUser(user *User) error {
 
 	for i := range j.data.Users {
 		if j.data.Users[i].ID == user.ID {
-			return ErrUserAlreadyExists
+			return models.ErrUserAlreadyExists
 		}
 	}
 
@@ -109,11 +111,11 @@ func (j *JSONDatabase) CreateUser(user *User) error {
 	}
 
 	if user.Faces == nil {
-		user.Faces = []Face{}
+		user.Faces = []models.Face{}
 	}
 
 	if user.Metadata == nil {
-		user.Metadata = make(Metadata)
+		user.Metadata = make(models.Metadata)
 	}
 
 	j.data.Users = append(j.data.Users, *user)
@@ -121,7 +123,7 @@ func (j *JSONDatabase) CreateUser(user *User) error {
 }
 
 // GetUser retrieves a user by ID
-func (j *JSONDatabase) GetUser(id string) (*User, error) {
+func (j *JSONDatabase) GetUser(id string) (*models.User, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
@@ -132,11 +134,11 @@ func (j *JSONDatabase) GetUser(id string) (*User, error) {
 		}
 	}
 
-	return nil, ErrUserNotFound
+	return nil, models.ErrUserNotFound
 }
 
 // GetUserByName retrieves a user by name (case-sensitive)
-func (j *JSONDatabase) GetUserByName(name string) (*User, error) {
+func (j *JSONDatabase) GetUserByName(name string) (*models.User, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
@@ -147,11 +149,11 @@ func (j *JSONDatabase) GetUserByName(name string) (*User, error) {
 		}
 	}
 
-	return nil, ErrUserNotFound
+	return nil, models.ErrUserNotFound
 }
 
 // UpdateUser updates an existing user
-func (j *JSONDatabase) UpdateUser(user *User) error {
+func (j *JSONDatabase) UpdateUser(user *models.User) error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 
@@ -168,7 +170,7 @@ func (j *JSONDatabase) UpdateUser(user *User) error {
 		}
 	}
 
-	return ErrUserNotFound
+	return models.ErrUserNotFound
 }
 
 // DeleteUser removes a user from the database
@@ -183,21 +185,21 @@ func (j *JSONDatabase) DeleteUser(id string) error {
 		}
 	}
 
-	return ErrUserNotFound
+	return models.ErrUserNotFound
 }
 
 // ListUsers returns all users in the database
-func (j *JSONDatabase) ListUsers() ([]User, error) {
+func (j *JSONDatabase) ListUsers() ([]models.User, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
-	users := make([]User, len(j.data.Users))
+	users := make([]models.User, len(j.data.Users))
 	copy(users, j.data.Users)
 	return users, nil
 }
 
 // AddFace adds a face to a user
-func (j *JSONDatabase) AddFace(userID string, face *Face) error {
+func (j *JSONDatabase) AddFace(userID string, face *models.Face) error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 
@@ -210,7 +212,7 @@ func (j *JSONDatabase) AddFace(userID string, face *Face) error {
 			continue
 		}
 		if len(j.data.Users[i].Faces) >= j.data.Settings.MaxFacesPerUser {
-			return ErrMaxFacesReached
+			return models.ErrMaxFacesReached
 		}
 
 		if face.ID == "" {
@@ -223,7 +225,7 @@ func (j *JSONDatabase) AddFace(userID string, face *Face) error {
 		return j.saveInternal()
 	}
 
-	return ErrUserNotFound
+	return models.ErrUserNotFound
 }
 
 // RemoveFace removes a face from a user
@@ -247,15 +249,15 @@ func (j *JSONDatabase) RemoveFace(userID, faceID string) error {
 		}
 	}
 
-	return ErrUserNotFound
+	return models.ErrUserNotFound
 }
 
 // GetAllEmbeddings returns a map of userID to faces for matching
-func (j *JSONDatabase) GetAllEmbeddings() (map[string][]Face, error) {
+func (j *JSONDatabase) GetAllEmbeddings() (map[string][]models.Face, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
-	embeddings := make(map[string][]Face)
+	embeddings := make(map[string][]models.Face)
 	for i := range j.data.Users {
 		if len(j.data.Users[i].Faces) > 0 {
 			embeddings[j.data.Users[i].ID] = j.data.Users[i].Faces
@@ -266,7 +268,7 @@ func (j *JSONDatabase) GetAllEmbeddings() (map[string][]Face, error) {
 }
 
 // GetSettings returns the current settings
-func (j *JSONDatabase) GetSettings() (*Settings, error) {
+func (j *JSONDatabase) GetSettings() (*models.Settings, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
@@ -275,7 +277,7 @@ func (j *JSONDatabase) GetSettings() (*Settings, error) {
 }
 
 // UpdateSettings updates the database settings
-func (j *JSONDatabase) UpdateSettings(settings *Settings) error {
+func (j *JSONDatabase) UpdateSettings(settings *models.Settings) error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 

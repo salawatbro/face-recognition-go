@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"face/config"
-	"face/internal/database"
 	"face/internal/storage"
 
 	"github.com/spf13/cobra"
@@ -39,10 +38,11 @@ func NewDeleteCmd(cfg *config.Config) *cobra.Command {
 }
 
 func runDelete(cfg *config.Config, userID string, confirm bool) error {
-	db, err := database.NewJSONDatabase(cfg.DatabasePath)
+	db, err := cfg.GetDatabaseConnection()
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
+	defer db.Close()
 
 	stor, err := storage.NewFileSystemStorage(cfg.FacesDir)
 	if err != nil {
