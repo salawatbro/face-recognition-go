@@ -1,43 +1,129 @@
 package database
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"time"
 )
 
+// Custom types for GORM JSON handling
+
+// Metadata is a custom type for storing JSON metadata
+type Metadata map[string]interface{}
+
+// Scan implements sql.Scanner interface
+func (m *Metadata) Scan(value interface{}) error {
+	if value == nil {
+		*m = make(map[string]interface{})
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("invalid type for Metadata")
+	}
+
+	if len(bytes) == 0 {
+		*m = make(map[string]interface{})
+		return nil
+	}
+
+	return json.Unmarshal(bytes, m)
+}
+
+// Value implements driver.Valuer interface
+func (m Metadata) Value() (driver.Value, error) {
+	if m == nil {
+		return "{}", nil
+	}
+	return json.Marshal(m)
+}
+
+// Embedding is a custom type for storing float32 arrays as JSON
+type Embedding []float32
+
+// Scan implements sql.Scanner interface
+func (e *Embedding) Scan(value interface{}) error {
+	if value == nil {
+		*e = []float32{}
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("invalid type for Embedding")
+	}
+
+	if len(bytes) == 0 {
+		*e = []float32{}
+		return nil
+	}
+
+	return json.Unmarshal(bytes, e)
+}
+
+// Value implements driver.Valuer interface
+func (e Embedding) Value() (driver.Value, error) {
+	if e == nil {
+		return "[]", nil
+	}
+	return json.Marshal(e)
+}
+
 // User represents a registered user in the system
 type User struct {
-	ID        string                 `json:"id"`
-	Name      string                 `json:"name"`
-	Email     string                 `json:"email,omitempty"`
-	Phone     string                 `json:"phone,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	Faces     []Face                 `json:"faces"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
+	ID        string    `gorm:"type:varchar(36);primaryKey" json:"id"`
+	Name      string    `gorm:"type:varchar(100);not null" json:"name"`
+	Email     string    `gorm:"type:varchar(255)" json:"email,omitempty"`
+	Phone     string    `gorm:"type:varchar(50)" json:"phone,omitempty"`
+	Metadata  Metadata  `gorm:"type:text" json:"metadata,omitempty"`
+	Faces     []Face    `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"faces"`
+	CreatedAt time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt time.Time `gorm:"not null" json:"updated_at"`
+}
+
+// TableName specifies the table name for User
+func (User) TableName() string {
+	return "users"
 }
 
 // Face represents a face image and its embedding
 type Face struct {
-	ID           string    `json:"id"`
-	Filename     string    `json:"filename"`
-	Embedding    []float32 `json:"embedding"`
-	EnrolledAt   time.Time `json:"enrolled_at"`
-	QualityScore float64   `json:"quality_score"`
+	ID           string    `gorm:"type:varchar(36);primaryKey" json:"id"`
+	UserID       string    `gorm:"type:varchar(36);not null;index" json:"user_id"`
+	Filename     string    `gorm:"type:varchar(255);not null" json:"filename"`
+	Embedding    Embedding `gorm:"type:text;not null" json:"embedding"`
+	QualityScore float64   `gorm:"type:real;not null;default:0" json:"quality_score"`
+	EnrolledAt   time.Time `gorm:"not null" json:"enrolled_at"`
 }
 
-// Database represents the entire database structure
-type Database struct {
-	Version  string   `json:"version"`
-	Users    []User   `json:"users"`
-	Settings Settings `json:"settings"`
+// TableName specifies the table name for Face
+func (Face) TableName() string {
+	return "faces"
 }
 
 // Settings stores global configuration
 type Settings struct {
-	MatchThreshold     float64 `json:"match_threshold"`
-	MaxFacesPerUser    int     `json:"max_faces_per_user"`
-	EmbeddingDimension int     `json:"embedding_dimension"`
+	ID                 int     `gorm:"primaryKey" json:"id"`
+	MatchThreshold     float64 `gorm:"type:real;not null;default:0.6" json:"match_threshold"`
+	MaxFacesPerUser    int     `gorm:"not null;default:10" json:"max_faces_per_user"`
+	EmbeddingDimension int     `gorm:"not null;default:128" json:"embedding_dimension"`
+}
+
+// TableName specifies the table name for Settings
+func (Settings) TableName() string {
+	return "settings"
 }
 
 // MatchResult represents an identification result
@@ -94,15 +180,12 @@ func (f *Face) Validate() error {
 	return nil
 }
 
-// NewDatabase creates a new database with default settings
-func NewDatabase() *Database {
-	return &Database{
-		Version: "1.0",
-		Users:   []User{},
-		Settings: Settings{
-			MatchThreshold:     0.6,
-			MaxFacesPerUser:    10,
-			EmbeddingDimension: 128,
-		},
+// DefaultSettings returns default settings
+func DefaultSettings() *Settings {
+	return &Settings{
+		ID:                 1,
+		MatchThreshold:     0.6,
+		MaxFacesPerUser:    10,
+		EmbeddingDimension: 128,
 	}
 }

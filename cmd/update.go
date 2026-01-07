@@ -155,7 +155,7 @@ func addFaceToUser(fs *FaceSystem, userID, imagePath string) error {
 	faceData := &database.Face{
 		ID:           faceID,
 		Filename:     filename,
-		Embedding:    result.Embedding,
+		Embedding:    database.Embedding(result.Embedding),
 		QualityScore: result.QualityScore,
 	}
 

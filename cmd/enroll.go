@@ -58,7 +58,7 @@ func runEnroll(cfg *config.Config, name, email, phone, imagesStr, metadataStr st
 		imagePaths[i] = strings.TrimSpace(imagePaths[i])
 	}
 
-	var metadataMap map[string]interface{}
+	var metadataMap database.Metadata
 	if metadataStr != "" {
 		if err := json.Unmarshal([]byte(metadataStr), &metadataMap); err != nil {
 			return fmt.Errorf("invalid metadata JSON: %w", err)
@@ -104,7 +104,7 @@ func runEnroll(cfg *config.Config, name, email, phone, imagesStr, metadataStr st
 		user.Faces = append(user.Faces, database.Face{
 			ID:           faceID,
 			Filename:     filename,
-			Embedding:    result.Embedding,
+			Embedding:    database.Embedding(result.Embedding),
 			QualityScore: result.QualityScore,
 		})
 		fmt.Printf("  ✓ Face enrolled successfully\n")

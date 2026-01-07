@@ -11,30 +11,33 @@ import (
 )
 
 type FaceSystem struct {
-	DB        *database.JSONDatabase
+	DB        database.Database
 	Storage   *storage.FileSystemStorage
 	Detector  *face.Detector
 	Extractor face.Extractor
 }
 
 func NewFaceSystem(cfg *config.Config) (*FaceSystem, error) {
-	db, err := database.NewJSONDatabase(cfg.DatabasePath)
+	db, err := cfg.GetDatabaseConnection()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
 	stor, err := storage.NewFileSystemStorage(cfg.FacesDir)
 	if err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
 	detector, err := face.NewDetector(cfg.ModelsDir)
 	if err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to initialize detector: %w", err)
 	}
 
 	extractor, err := face.NewExtractor(cfg.ModelsDir)
 	if err != nil {
+		db.Close()
 		detector.Close()
 		return nil, fmt.Errorf("failed to initialize extractor: %w", err)
 	}
@@ -48,6 +51,9 @@ func NewFaceSystem(cfg *config.Config) (*FaceSystem, error) {
 }
 
 func (fs *FaceSystem) Close() {
+	if fs.DB != nil {
+		fs.DB.Close()
+	}
 	if fs.Detector != nil {
 		fs.Detector.Close()
 	}

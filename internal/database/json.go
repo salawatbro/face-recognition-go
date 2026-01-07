@@ -10,10 +10,31 @@ import (
 	"github.com/google/uuid"
 )
 
+// jsonData represents the internal JSON file structure
+type jsonData struct {
+	Version  string   `json:"version"`
+	Users    []User   `json:"users"`
+	Settings Settings `json:"settings"`
+}
+
+// newJSONData creates a new JSON data structure with defaults
+func newJSONData() *jsonData {
+	return &jsonData{
+		Version: "1.0",
+		Users:   []User{},
+		Settings: Settings{
+			ID:                 1,
+			MatchThreshold:     0.6,
+			MaxFacesPerUser:    10,
+			EmbeddingDimension: 128,
+		},
+	}
+}
+
 // JSONDatabase implements a thread-safe JSON file-based database
 type JSONDatabase struct {
 	filePath string
-	db       *Database
+	data     *jsonData
 	mutex    sync.RWMutex
 }
 
@@ -21,7 +42,7 @@ type JSONDatabase struct {
 func NewJSONDatabase(filePath string) (*JSONDatabase, error) {
 	jdb := &JSONDatabase{
 		filePath: filePath,
-		db:       NewDatabase(),
+		data:     newJSONData(),
 	}
 
 	if loadErr := jdb.Load(); loadErr != nil {
@@ -47,12 +68,12 @@ func (j *JSONDatabase) Load() error {
 		return err
 	}
 
-	db := NewDatabase()
-	if err := json.Unmarshal(data, db); err != nil {
+	jd := newJSONData()
+	if err := json.Unmarshal(data, jd); err != nil {
 		return ErrDatabaseCorrupt
 	}
 
-	j.db = db
+	j.data = jd
 	return nil
 }
 
@@ -61,27 +82,7 @@ func (j *JSONDatabase) Save() error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 
-	backupPath := j.filePath + ".backup"
-	if _, err := os.Stat(j.filePath); err == nil {
-		if err := os.Rename(j.filePath, backupPath); err != nil {
-			return fmt.Errorf("failed to create backup: %w", err)
-		}
-	}
-
-	data, err := json.MarshalIndent(j.db, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal database: %w", err)
-	}
-
-	if err := os.WriteFile(j.filePath, data, 0o600); err != nil {
-		if _, statErr := os.Stat(backupPath); statErr == nil {
-			_ = os.Rename(backupPath, j.filePath)
-		}
-		return fmt.Errorf("failed to write database: %w", err)
-	}
-
-	_ = os.Remove(backupPath)
-	return nil
+	return j.saveInternal()
 }
 
 // CreateUser adds a new user to the database
@@ -93,8 +94,8 @@ func (j *JSONDatabase) CreateUser(user *User) error {
 		return err
 	}
 
-	for i := range j.db.Users {
-		if j.db.Users[i].ID == user.ID {
+	for i := range j.data.Users {
+		if j.data.Users[i].ID == user.ID {
 			return ErrUserAlreadyExists
 		}
 	}
@@ -112,10 +113,10 @@ func (j *JSONDatabase) CreateUser(user *User) error {
 	}
 
 	if user.Metadata == nil {
-		user.Metadata = make(map[string]interface{})
+		user.Metadata = make(Metadata)
 	}
 
-	j.db.Users = append(j.db.Users, *user)
+	j.data.Users = append(j.data.Users, *user)
 	return j.saveInternal()
 }
 
@@ -124,9 +125,9 @@ func (j *JSONDatabase) GetUser(id string) (*User, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
-	for i := range j.db.Users {
-		if j.db.Users[i].ID == id {
-			user := j.db.Users[i]
+	for i := range j.data.Users {
+		if j.data.Users[i].ID == id {
+			user := j.data.Users[i]
 			return &user, nil
 		}
 	}
@@ -139,9 +140,9 @@ func (j *JSONDatabase) GetUserByName(name string) (*User, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
-	for i := range j.db.Users {
-		if j.db.Users[i].Name == name {
-			user := j.db.Users[i]
+	for i := range j.data.Users {
+		if j.data.Users[i].Name == name {
+			user := j.data.Users[i]
 			return &user, nil
 		}
 	}
@@ -158,11 +159,11 @@ func (j *JSONDatabase) UpdateUser(user *User) error {
 		return err
 	}
 
-	for i := range j.db.Users {
-		if j.db.Users[i].ID == user.ID {
+	for i := range j.data.Users {
+		if j.data.Users[i].ID == user.ID {
 			user.UpdatedAt = time.Now()
-			user.CreatedAt = j.db.Users[i].CreatedAt
-			j.db.Users[i] = *user
+			user.CreatedAt = j.data.Users[i].CreatedAt
+			j.data.Users[i] = *user
 			return j.saveInternal()
 		}
 	}
@@ -175,9 +176,9 @@ func (j *JSONDatabase) DeleteUser(id string) error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 
-	for i := range j.db.Users {
-		if j.db.Users[i].ID == id {
-			j.db.Users = append(j.db.Users[:i], j.db.Users[i+1:]...)
+	for i := range j.data.Users {
+		if j.data.Users[i].ID == id {
+			j.data.Users = append(j.data.Users[:i], j.data.Users[i+1:]...)
 			return j.saveInternal()
 		}
 	}
@@ -190,8 +191,8 @@ func (j *JSONDatabase) ListUsers() ([]User, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
-	users := make([]User, len(j.db.Users))
-	copy(users, j.db.Users)
+	users := make([]User, len(j.data.Users))
+	copy(users, j.data.Users)
 	return users, nil
 }
 
@@ -204,11 +205,11 @@ func (j *JSONDatabase) AddFace(userID string, face *Face) error {
 		return err
 	}
 
-	for i := range j.db.Users {
-		if j.db.Users[i].ID != userID {
+	for i := range j.data.Users {
+		if j.data.Users[i].ID != userID {
 			continue
 		}
-		if len(j.db.Users[i].Faces) >= j.db.Settings.MaxFacesPerUser {
+		if len(j.data.Users[i].Faces) >= j.data.Settings.MaxFacesPerUser {
 			return ErrMaxFacesReached
 		}
 
@@ -217,8 +218,8 @@ func (j *JSONDatabase) AddFace(userID string, face *Face) error {
 		}
 
 		face.EnrolledAt = time.Now()
-		j.db.Users[i].Faces = append(j.db.Users[i].Faces, *face)
-		j.db.Users[i].UpdatedAt = time.Now()
+		j.data.Users[i].Faces = append(j.data.Users[i].Faces, *face)
+		j.data.Users[i].UpdatedAt = time.Now()
 		return j.saveInternal()
 	}
 
@@ -230,15 +231,15 @@ func (j *JSONDatabase) RemoveFace(userID, faceID string) error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 
-	for i := range j.db.Users {
-		if j.db.Users[i].ID == userID {
-			for k := range j.db.Users[i].Faces {
-				if j.db.Users[i].Faces[k].ID == faceID {
-					j.db.Users[i].Faces = append(
-						j.db.Users[i].Faces[:k],
-						j.db.Users[i].Faces[k+1:]...,
+	for i := range j.data.Users {
+		if j.data.Users[i].ID == userID {
+			for k := range j.data.Users[i].Faces {
+				if j.data.Users[i].Faces[k].ID == faceID {
+					j.data.Users[i].Faces = append(
+						j.data.Users[i].Faces[:k],
+						j.data.Users[i].Faces[k+1:]...,
 					)
-					j.db.Users[i].UpdatedAt = time.Now()
+					j.data.Users[i].UpdatedAt = time.Now()
 					return j.saveInternal()
 				}
 			}
@@ -255,9 +256,9 @@ func (j *JSONDatabase) GetAllEmbeddings() (map[string][]Face, error) {
 	defer j.mutex.RUnlock()
 
 	embeddings := make(map[string][]Face)
-	for i := range j.db.Users {
-		if len(j.db.Users[i].Faces) > 0 {
-			embeddings[j.db.Users[i].ID] = j.db.Users[i].Faces
+	for i := range j.data.Users {
+		if len(j.data.Users[i].Faces) > 0 {
+			embeddings[j.data.Users[i].ID] = j.data.Users[i].Faces
 		}
 	}
 
@@ -269,7 +270,7 @@ func (j *JSONDatabase) GetSettings() (*Settings, error) {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
 
-	settings := j.db.Settings
+	settings := j.data.Settings
 	return &settings, nil
 }
 
@@ -278,7 +279,7 @@ func (j *JSONDatabase) UpdateSettings(settings *Settings) error {
 	j.mutex.Lock()
 	defer j.mutex.Unlock()
 
-	j.db.Settings = *settings
+	j.data.Settings = *settings
 	return j.saveInternal()
 }
 
@@ -291,7 +292,7 @@ func (j *JSONDatabase) saveInternal() error {
 		}
 	}
 
-	data, err := json.MarshalIndent(j.db, "", "  ")
+	data, err := json.MarshalIndent(j.data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal database: %w", err)
 	}
@@ -305,4 +306,9 @@ func (j *JSONDatabase) saveInternal() error {
 
 	_ = os.Remove(backupPath)
 	return nil
+}
+
+// Close implements the Database interface (no-op for JSON)
+func (j *JSONDatabase) Close() error {
+	return j.Save()
 }
